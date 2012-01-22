@@ -7,13 +7,13 @@ import akka.setak.core.TestMessageEnvelopSequence._
 import core.TestActorRef
 import actors.{ RedisClientWorker, RedisClientSession }
 import messages._
-import java.net.InetSocketAddress
 import akka.actor._
 import org.scalatest.BeforeAndAfterAll
 import akka.util.ByteString
 import protocol.Constants
 import types.RedisString
 import akka.dispatch.FutureTimeoutException
+import java.net.{ ConnectException, InetSocketAddress }
 
 class RedisClientSessionActorSpec extends SetakWordSpec {
 
@@ -74,8 +74,25 @@ class RedisClientSessionActorSpec extends SetakWordSpec {
 
       "keep trying to connect if the server is offline and connect once the server is online if auto-reconnect is enabled" in {
         assert(defaultConfig.autoReconnect, "auto-reconnect is not enabled in default-config")
-        val closedMsg = testMessagePatternEnvelop(NullChannel, worker, { case IO.Closed(handle, cause) ⇒ })
-        val connectedMsg = testMessagePatternEnvelop(NullChannel, worker, { case IO.Connected(handle) ⇒ })
+        val closedMsg = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Closed(handle, cause) ⇒ })
+        val connectedMsg = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Connected(handle) ⇒ })
+        // sometimes received sometimes not, not sure why
+        val toSessionSocketMsg = testMessagePatternEnvelop(worker, session, { case Socket(handle) ⇒ })
+        val toWorkerSocketMsg = testMessagePatternEnvelop(session, worker, { case Socket(handle) ⇒ })
+
+        EchoServer.stop()
+        session.start()
+        // add afterMessage(closedMsg)
+        Thread.sleep(1000) // wait for 1 second, simulating a server down-time
+        EchoServer.start()
+        // make sure we have connected to the server and that the worker has sent us the new socket
+        afterAllMessages {}
+      }
+
+      "keep trying to connect if the server is offline and connect once the server is online if auto-reconnect is enabled (out of order)" in {
+        assert(defaultConfig.autoReconnect, "auto-reconnect is not enabled in default-config")
+        val closedMsg = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Closed(handle, cause) ⇒ })
+        val connectedMsg = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Connected(handle) ⇒ })
         // sometimes received sometimes not, not sure why
         val toSessionSocketMsg = testMessagePatternEnvelop(worker, session, { case Socket(handle) ⇒ })
         val toWorkerSocketMsg = testMessagePatternEnvelop(session, worker, { case Socket(handle) ⇒ })
@@ -130,10 +147,11 @@ class RedisClientSessionActorSpec extends SetakWordSpec {
       }
 
       "retry and complete pending requests when the server goes offline if retry-on-reconnect is enabled" in {
+        val closed = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Closed(handle, Some(cause: ConnectException)) ⇒ })
         EchoServer.stop()
         session.start()
+        afterMessage(closed) {}
         val f = session ? Request(ByteString("+some string") ++ Constants.EOL)
-        Thread.sleep(1000)
         EchoServer.start()
         assert(f.get == RedisString("some string"))
       }
@@ -142,23 +160,23 @@ class RedisClientSessionActorSpec extends SetakWordSpec {
         ioManager.stop(); session.stop(); worker.stop();
         init(RedisClientConfig(retryOnReconnect = false))
 
-        val connected = testMessagePatternEnvelop(NullChannel, worker, { case IO.Connected(handle) ⇒ })
-        val disconnected = testMessagePatternEnvelop(NullChannel, worker, { case IO.Closed(handle, cause) ⇒ })
-        session.start()
-        afterMessage(connected) {} // wait till we get connected
+        val closed = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Closed(handle, Some(cause: ConnectException)) ⇒ })
+        val connected = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Connected(handle) ⇒ })
 
-        // bring the server down and wait for a disconnect response
         EchoServer.stop()
-        afterMessage(disconnected) {}
+        assert(EchoServer.actor.isShutdown)
+        session.start()
+        afterMessage(closed) {}
         val ignoredRequest = session ? Request(ByteString("+some string") ++ Constants.EOL)
-
         EchoServer.start()
-        val validRequest = session ? Request(ByteString("+some string 2") ++ Constants.EOL)
-
         intercept[FutureTimeoutException] {
-          println(ignoredRequest.get)
+          ignoredRequest.get
         }
+
+        afterMessage(connected) {}
+        val validRequest = session ? Request(ByteString("+some string 2") ++ Constants.EOL)
         assert(validRequest.get == RedisString("some string 2"))
+
       }
     }
   }

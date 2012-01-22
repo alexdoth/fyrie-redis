@@ -118,7 +118,6 @@ class IOManagerActorSpec extends WordSpec with BeforeAndAfterEach with TestKit {
     }
 
     "used as a server and a cleint" should {
-
     }
   }
 }

@@ -157,7 +157,6 @@ private[redis] final class RedisClientWorker(ioManager: ActorRef,
   def receive = {
 
     case IO.Read(handle, bytes) ⇒
-      println("Read")
       state(IO Chunk bytes)
 
     case IO.Connected(handle) ⇒
@@ -183,7 +182,6 @@ private[redis] final class RedisClientWorker(ioManager: ActorRef,
       state(IO EOF cause)
 
     case Run ⇒
-      println("Run")
       val source = self.channel
       for {
         _ ← state

@@ -10,8 +10,8 @@ import java.net.{ InetSocketAddress, ConnectException }
 import akka.util.{ ByteString, Duration }
 import protocol.Constants
 import net.fyrie.redis.types._
-import akka.dispatch.ActorCompletableFuture
 import akka.actor.{ ActorRef, IO }
+import akka.dispatch.{ FutureTimeoutException, ActorCompletableFuture }
 
 class RedisClientWorkerActorSpec extends SetakWordSpec {
 
@@ -135,8 +135,9 @@ class RedisClientWorkerActorSpec extends SetakWordSpec {
         val illFormatedMsg = ByteString("missing token")
 
         // send the ill formatted message
-        send(illFormatedMsg).get // should this throw a RedisProtocolException?
-
+        intercept[FutureTimeoutException] {
+          send(illFormatedMsg).get // should this throw a RedisProtocolException?
+        }
         // send the healthy message, we should resume normal operations
         val future = send(stringToken + msgString)
         assert(future.get == RedisString(msgString))

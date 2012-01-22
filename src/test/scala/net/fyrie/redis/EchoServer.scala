@@ -7,9 +7,11 @@ import java.net.{ Socket, ServerSocket, SocketException }
 import java.io.{ BufferedReader, InputStreamReader, PrintStream }
 import akka.actor.IO.{ SocketHandle, ServerHandle }
 import akka.actor._
+import akka.dispatch.FutureTimeoutException
 
 /**
  * Echo server based on the IOManager implementation (didn't want to rewrite the selector implementation)
+ * Single client only
  */
 object EchoServer {
   var port = 59999
@@ -20,36 +22,31 @@ object EchoServer {
   case object Shutdown
 
   class EchoActor extends Actor {
-    var ioManager: ActorRef = _
-    var clientSocket: SocketHandle = _
+    val ioManager: ActorRef = Actor.actorOf(new IOManager())
     var serverSocket: ServerHandle = _
-    var source: UntypedChannel = _
+    var clientSocket: Option[SocketHandle] = None
+    var source: Option[UntypedChannel] = None
 
     override def preStart() {
-      ioManager = Actor.actorOf(new IOManager()).start()
+      ioManager.start()
       serverSocket = IO.listen(ioManager, "localhost", port, self)
     }
 
     def receive = {
-      case IO.NewClient(server) ⇒ clientSocket = server.accept()
+      case IO.NewClient(server) ⇒ clientSocket = Some(server.accept())
 
       case IO.Read(handle, bytes) ⇒
-        if (handle != clientSocket) println("EchoActor: Received socket I don't know about")
-        clientSocket.write(bytes)
+        if (clientSocket.isDefined) {
+          if (handle == clientSocket.get) clientSocket.get.write(bytes)
+          else println("EchoActor: Received socket I don't know about")
+        }
 
       case IO.Closed(handle, cause) ⇒
-      //println("IO.Closed " + handle)
-      //if (handle == clientSocket) { println("Replying on IO.Closed"); source.tryTell() }
-
-      case Shutdown                 ⇒ //source = self.sender
       case _                        ⇒ println("EchoActor: Unahdled message: ")
     }
 
     override def postStop() {
-      // TODO: Wait for IO.Closed instead by receiving Shutdown request (need synchronous)
-      serverSocket.close()
-      Thread.sleep(500) // wait to make sure we close the socket
-
+      // TODO: Wait for IO.Closed instead by receiving Shutdown request (need synchronous)?
       ioManager.stop()
     }
   }
@@ -59,10 +56,6 @@ object EchoServer {
   }
 
   def stop() {
-    //println("Echo stop")
-    //(actor ? Shutdown).get
-    //println("Echo has stopped")
-
     if (actor.isRunning) {
       actor.stop()
     }
