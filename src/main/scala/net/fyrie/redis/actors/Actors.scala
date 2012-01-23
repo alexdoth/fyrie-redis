@@ -101,14 +101,15 @@ private[redis] final class RedisClientSession(
 private[redis] final class RedisSubscriberSession(listener: ActorRef)(ioManager: ActorRef, host: String, port: Int, config: RedisClientConfig) extends Actor {
 
   var socket: IO.SocketHandle = _
-  var worker: ActorRef = _
+  var worker: ActorRef = actorOf(new RedisClientWorker(ioManager, host, port, config))
 
   var client: RedisClientSub = _
 
   override def preStart = {
     client = new RedisClientSub(self, config)
     EventHandler info (this, "Connecting")
-    worker = actorOf(new RedisClientWorker(ioManager, host, port, config))
+    // moved this in the initialization to make testing more easy
+    //worker = actorOf(new RedisClientWorker(ioManager, host, port, config))
     worker.start
     self link worker
     socket = IO.connect(ioManager, host, port, worker)
@@ -134,7 +135,6 @@ private[redis] final class RedisSubscriberSession(listener: ActorRef)(ioManager:
       EventHandler info (this, "Shutting down")
       socket.close
       self.stop()
-
   }
 
 }

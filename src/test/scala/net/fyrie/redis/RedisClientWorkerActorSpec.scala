@@ -10,8 +10,8 @@ import java.net.{ InetSocketAddress, ConnectException }
 import akka.util.{ ByteString, Duration }
 import protocol.Constants
 import net.fyrie.redis.types._
-import akka.actor.{ ActorRef, IO }
 import akka.dispatch.{ FutureTimeoutException, ActorCompletableFuture }
+import akka.actor.{ Actor, ActorRef, IO }
 
 class RedisClientWorkerActorSpec extends SetakWordSpec {
 
@@ -55,6 +55,20 @@ class RedisClientWorkerActorSpec extends SetakWordSpec {
       }
     }
 
+    "complain if the supervisor doesn't handle sent messages" in {
+      val stupidSupervisor = testActorRefFactory.actorOf[ActorThatReceivesOnlyIntMessage].start()
+      val newWorker = testActorRefFactory.actorOf(new RedisClientWorker(ioManagerProbe.ref, "", 0, defaultConfig)).start()
+      try {
+        stupidSupervisor link newWorker
+        newWorker ! Socket(socket)
+        newWorker ! IO.Closed(socket, None)
+        whenStable {
+          assert(newWorker.isRunning, "Worker was unexpectedly shutdown")
+        }
+      } finally {
+        stupidSupervisor.stop()
+      }
+    }
   }
 
   "RedisClientWorker" when {
@@ -203,5 +217,11 @@ class RedisClientWorkerActorSpec extends SetakWordSpec {
         }
       }
     }
+  }
+}
+
+class ActorThatReceivesOnlyIntMessage extends Actor {
+  def receive = {
+    case x: Int ⇒ // do nothing
   }
 }

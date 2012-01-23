@@ -31,7 +31,6 @@ class PubSubSpec extends Specification with PubSubHelper {
     } ^
     pubsub.stop ^
     end
-
 }
 
 trait PubSubHelper { self: Specification ⇒

@@ -72,42 +72,44 @@ class RedisClientSessionActorSpec extends SetakWordSpec {
         }
       }
 
-      "keep trying to connect if the server is offline and connect once the server is online if auto-reconnect is enabled" in {
-        assert(defaultConfig.autoReconnect, "auto-reconnect is not enabled in default-config")
-        val closedMsg = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Closed(handle, cause) ⇒ })
-        val connectedMsg = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Connected(handle) ⇒ })
-        // sometimes received sometimes not, not sure why
-        val toSessionSocketMsg = testMessagePatternEnvelop(worker, session, { case Socket(handle) ⇒ })
-        val toWorkerSocketMsg = testMessagePatternEnvelop(session, worker, { case Socket(handle) ⇒ })
+      "keep trying to connect if the server is offline and connect once the server is online if " +
+        "auto-reconnect is enabled" in {
+          assert(defaultConfig.autoReconnect, "auto-reconnect is not enabled in default-config")
+          val closedMsg = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Closed(handle, cause) ⇒ })
+          val connectedMsg = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Connected(handle) ⇒ })
+          // sometimes received sometimes not, not sure why
+          val toSessionSocketMsg = testMessagePatternEnvelop(worker, session, { case Socket(handle) ⇒ })
+          val toWorkerSocketMsg = testMessagePatternEnvelop(session, worker, { case Socket(handle) ⇒ })
 
-        EchoServer.stop()
-        session.start()
-        // add afterMessage(closedMsg)
-        Thread.sleep(1000) // wait for 1 second, simulating a server down-time
-        EchoServer.start()
-        // make sure we have connected to the server and that the worker has sent us the new socket
-        afterAllMessages {}
-      }
+          EchoServer.stop()
+          session.start()
+          // add afterMessage(closedMsg)
+          Thread.sleep(1000) // wait for 1 second, simulating a server down-time
+          EchoServer.start()
+          // make sure we have connected to the server and that the worker has sent us the new socket
+          afterAllMessages {}
+        }
 
-      "keep trying to connect if the server is offline and connect once the server is online if auto-reconnect is enabled (out of order)" in {
-        assert(defaultConfig.autoReconnect, "auto-reconnect is not enabled in default-config")
-        val closedMsg = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Closed(handle, cause) ⇒ })
-        val connectedMsg = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Connected(handle) ⇒ })
-        // sometimes received sometimes not, not sure why
-        val toSessionSocketMsg = testMessagePatternEnvelop(worker, session, { case Socket(handle) ⇒ })
-        val toWorkerSocketMsg = testMessagePatternEnvelop(session, worker, { case Socket(handle) ⇒ })
+      "keep trying to connect if the server is offline and connect once the server is online if " +
+        "auto-reconnect is enabled (out of order)" in {
+          assert(defaultConfig.autoReconnect, "auto-reconnect is not enabled in default-config")
+          val closedMsg = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Closed(handle, cause) ⇒ })
+          val connectedMsg = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Connected(handle) ⇒ })
+          // sometimes received sometimes not, not sure why
+          val toSessionSocketMsg = testMessagePatternEnvelop(worker, session, { case Socket(handle) ⇒ })
+          val toWorkerSocketMsg = testMessagePatternEnvelop(session, worker, { case Socket(handle) ⇒ })
 
-        // possible interesting schedule
-        setSchedule(closedMsg -> toWorkerSocketMsg)
+          // possible interesting schedule
+          setSchedule(closedMsg -> toWorkerSocketMsg)
 
-        EchoServer.stop()
-        session.start()
-        // add afterMessage(closedMsg)
-        Thread.sleep(1000) // wait for 1 second, simulating a server down-time
-        EchoServer.start()
-        // make sure we have connected to the server and that the worker has sent us the new socket
-        afterAllMessages {}
-      }
+          EchoServer.stop()
+          session.start()
+          // add afterMessage(closedMsg)
+          Thread.sleep(1000) // wait for 1 second, simulating a server down-time
+          EchoServer.start()
+          // make sure we have connected to the server and that the worker has sent us the new socket
+          afterAllMessages {}
+        }
 
       "shutdown if the server refuses the connection and auto-reconnect is disabled" in {
         ioManager.stop(); session.stop(); worker.stop();
