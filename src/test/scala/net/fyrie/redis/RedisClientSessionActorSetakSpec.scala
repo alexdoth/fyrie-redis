@@ -15,7 +15,7 @@ import types.RedisString
 import akka.dispatch.FutureTimeoutException
 import java.net.{ ConnectException, InetSocketAddress }
 
-class RedisClientSessionActorSpec extends SetakWordSpec {
+class RedisClientSessionActorSetakSpec extends SetakWordSpec {
 
   TestConfig.timeOutForMessages = 5000 // 5 seconds
 
@@ -52,7 +52,28 @@ class RedisClientSessionActorSpec extends SetakWordSpec {
 
   "RedisClientSession" when {
     "connecting to a server" should {
+
       "establishing a connection if the server is online" in {
+        val disconnectMsg = testMessageEnvelop(session, worker, Disconnect)
+        val connectedMsg = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Connected(handle) ⇒ })
+        val socketMsg = testMessagePatternEnvelop(session, worker, { case Socket(socket) ⇒ })
+
+        //setSchedule(connectedMsg -> socketMsg -> disconnectMsg)
+        setSchedule(socketMsg -> connectedMsg -> disconnectMsg)
+
+        session.start()
+        afterMessage(connectedMsg) {
+          session ! Disconnect
+          whenStable {
+            assert(isProcessed(socketMsg), "Worker did not receive the socket")
+            assert(isProcessed(disconnectMsg), "Worker did not receive disconnect")
+            assert(session.isShutdown, "Session is still running")
+            assert(worker.isShutdown, "Worker is still running")
+          }
+        }
+      }
+
+      "establishing a connection if the server is online (out of order)" in {
         val disconnectMsg = testMessageEnvelop(session, worker, Disconnect)
         val connectedMsg = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Connected(handle) ⇒ })
         val socketMsg = testMessagePatternEnvelop(session, worker, { case Socket(socket) ⇒ })
@@ -110,24 +131,6 @@ class RedisClientSessionActorSpec extends SetakWordSpec {
           // make sure we have connected to the server and that the worker has sent us the new socket
           afterAllMessages {}
         }
-
-      "shutdown if the server refuses the connection and auto-reconnect is disabled" in {
-        ioManager.stop(); session.stop(); worker.stop();
-        init(RedisClientConfig(autoReconnect = false))
-
-        val closedMsg = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Closed(handle, cause) ⇒ })
-        val disconnectedMsg = testMessageEnvelop(worker, session, Disconnect)
-
-        // bring the server down
-        EchoServer.stop()
-        session.start()
-
-        afterAllMessages { // wait for closed and disconnected
-          assert(session.isShutdown, "Session is still running")
-          assert(worker.isShutdown, "Worker is still running")
-        }
-      }
-
     }
 
     "connected to a server" should {
@@ -146,16 +149,6 @@ class RedisClientSessionActorSpec extends SetakWordSpec {
         val f = session ? Request(ByteString("+some string") ++ Constants.EOL)
         assert(f.get == RedisString("some string"))
         afterAllMessages {}
-      }
-
-      "retry and complete pending requests when the server goes offline if retry-on-reconnect is enabled" in {
-        val closed = testMessagePatternEnvelop(anyActorRef, worker, { case IO.Closed(handle, Some(cause: ConnectException)) ⇒ })
-        EchoServer.stop()
-        session.start()
-        afterMessage(closed) {}
-        val f = session ? Request(ByteString("+some string") ++ Constants.EOL)
-        EchoServer.start()
-        assert(f.get == RedisString("some string"))
       }
 
       "ignore pending requests when the server goes offline if retry-on-reconnect is disabled" in {

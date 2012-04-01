@@ -2,7 +2,7 @@ import sbt._
 import Keys._
 
 import com.typesafe.sbtscalariform.ScalariformPlugin
-import ScalariformPlugin.{ format, formatPreferences }
+import com.typesafe.sbtscalariform.ScalariformPlugin.ScalariformKeys
 
 object FyrieRedisBuild extends Build {
   lazy val core = Project("fyrie-redis",
@@ -27,14 +27,17 @@ object FyrieRedisBuild extends Build {
     resolvers += "setak" at "http://mir.cs.illinois.edu/setak/snapshots/",
     libraryDependencies += "edu.illinois" %% "setak" % "1.0-SNAPSHOT",
 
-    parallelExecution in Test := false,
-    formatPreferences in Compile := formattingPreferences,
-    formatPreferences in Test :=  formattingPreferences,
+    parallelExecution := false,
+    scalacOptions ++= Seq("-encoding", "UTF-8", "-deprecation", "-unchecked", "-optimize"),
+    ScalariformKeys.preferences in Compile := formattingPreferences,
+    ScalariformKeys.preferences in Test :=  formattingPreferences,
+
     publishTo <<= (version) { version: String =>
       val repo = (s: String) =>
         Resolver.ssh(s, "repo.fyrie.net", "/home/repo/" + s + "/") as("derek", file("/home/derek/.ssh/id_rsa")) withPermissions("0644")
       Some(if (version.trim.endsWith("SNAPSHOT")) repo("snapshots") else repo("releases"))
     })
+
 
   val formattingPreferences = {
     import scalariform.formatter.preferences._
