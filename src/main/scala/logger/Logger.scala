@@ -20,7 +20,7 @@ class CallerSource(val className: String, val methodName: String) extends Source
 object Logger {
 
   // possible to have a list of listeners in the future
-  val defaultListener = Actor.actorOf[DefaultListener].start()
+  var defaultListener = Actor.actorOf[VoidListener].start()
 
   sealed trait ActorEvent
   case class Started(actor: Actor) extends ActorEvent
@@ -33,6 +33,11 @@ object Logger {
   def stopped(implicit actor: Actor) = defaultListener ! Stopped(actor)
 
   def started(implicit actor: Actor) = defaultListener ! Started(actor)
+
+  def enable() {
+    defaultListener.stop()
+    defaultListener = Actor.actorOf[DefaultListener].start()
+  }
 
   def sent(sender: Source, message: Any = "")(implicit actor: Actor) {
     defaultListener ! Sent(sender, message, actor)
@@ -53,6 +58,12 @@ object Logger {
   def shutdown() {
     defaultListener.stop()
   }
+
+
+  class VoidListener extends Actor {
+    def receive = { case _ => }
+  }
+
 
   class DefaultListener extends Actor {
 
