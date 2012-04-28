@@ -91,9 +91,3 @@ class RedisClientWorkerActorSetakSpec extends SetakWordSpec {
     }
   }
 }
-
-class ActorThatReceivesOnlyIntMessage extends Actor {
-  def receive = {
-    case x: Int ⇒ // do nothing
-  }
-}

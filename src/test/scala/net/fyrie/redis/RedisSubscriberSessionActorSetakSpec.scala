@@ -147,12 +147,3 @@ class RedisSubscriberSessionActorSetakSpec extends SetakWordSpec {
     }
   }
 }
-
-/**
- * Dummy test actor that receives anything
- */
-class TestListener extends Actor {
-  def receive = {
-    case _ ⇒
-  }
-}

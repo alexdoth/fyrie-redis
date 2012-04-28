@@ -126,6 +126,17 @@ class RedisClientWorkerActorSpec extends SetakWordSpec {
         f
       }
 
+      "handle out of order Run/Read" in {
+        worker ! IO.Read(socket, ByteString(stringToken + msgString) ++ Constants.EOL)
+        implicit val timeout = Actor.Timeout(Duration("1 second"))
+        val f = worker ? Run
+        try {
+          f.get
+        } catch {
+          case e: FutureTimeoutException => fail("Future timeout exception raised")
+        }
+      }
+
       "forward correctly-formated redis type data from a single request to the caller" in {
         worker ! Socket(socket)
         worker ! IO.Connected(socket)
